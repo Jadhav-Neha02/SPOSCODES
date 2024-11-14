@@ -1,0 +1,53 @@
+#Page Replacement Algorithms
+def LRU(processes,frame_size):
+    tracker = [["-" for _ in range(frame_size)] for i in range(len(processes))]
+    page_fault = 0
+    #Here what to replace we have to find out, doesn't follow a pattern
+    #So no need to define it
+    for i in range(len(processes)):
+        process = processes[i]
+        #Copying previous alignment to make changes
+        if i>=1:
+            tracker[i] = list(tracker[i-1])
+        if process not in tracker[i]:
+            page_fault += 1
+            #initially we just fillup the empty spaces
+            if "-" in tracker[i]:
+                ind = tracker[i].index("-")
+                tracker[i][ind] = process
+            #if not
+            else:
+                recent = processes[:i]
+                #preventing shallowcopy and reversing it
+                recent = list(recent)
+                recent = recent[::-1]
+                #Now we check which has the largest index in reverse list
+                ind_to_replace = None
+                for p in tracker[i]:
+                    temp_index = recent.index(p)
+                    if ind_to_replace is None:
+                        ind_to_replace = temp_index
+                    if temp_index > ind_to_replace:
+                        ind_to_replace = temp_index
+                #element to replace
+                element_to_replace = recent[ind_to_replace]
+                #Now we have what element to replace
+                #We need to find the position in frame to replace
+                ind = tracker[i].index(element_to_replace)
+                #Replace
+                tracker[i][ind] = process
+    print("Least Recently Used")
+    print("Page Faults : ", page_fault)
+    for i in tracker:
+        print(i)
+
+
+
+
+
+if __name__ == "__main__":
+    reference = [7,0,1,2,0,3,0,4,2,3,0,3,2,1,2,0,1,7,0,1]
+    frame_size = 4
+    print("Reference: ",reference)
+    LRU(reference,frame_size)
+    

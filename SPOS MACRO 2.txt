@@ -1,0 +1,144 @@
+SPOS MACRO 2
+
+CODE:
+from collections import OrderedDict
+
+def macro_pass2():
+    with open("on file/mnt.txt", "r") as mnt, \
+         open("on file/mdt.txt", "r") as mdt, \
+         open("on file/kpdt.txt", "r") as kpdt, \
+         open("on file/pntab.txt", "r") as pnt, \
+         open("on file/intermediate.txt", "r") as ir, \
+         open("on file/expanded_code.txt", "w") as expanded:
+
+        # Read MDT into memory (mapping of macro names to their body code)
+        mdt_dict = OrderedDict()
+        mnt_dict = {}
+        pnt_dict = {}
+
+        # Read MNT (Macro Name Table)
+        for line in mnt:
+            parts = line.split()
+            macro_name = parts[0]
+            mnt_dict[macro_name] = {
+                'pp': int(parts[1]),   # Number of positional parameters
+                'kp': int(parts[2]),   # Number of keyword parameters
+                'mdtp': int(parts[3]), # MDT Pointer
+                'kpdtp': int(parts[4]) # Keyword Parameter Table Pointer
+            }
+
+        # Read PNTAB (Parameter Name Table) and build a reverse lookup
+        for line in pnt:
+            parts = line.split(":")
+            macro_name = parts[0].strip()
+            params = parts[1].split()
+            pnt_dict[macro_name] = params
+
+        # Read MDT (Macro Definition Table) into memory
+        mdt_lines = {}
+        current_macro = None
+        for line in mdt:
+            parts = line.split()
+            if len(parts) == 0:
+                continue
+            if parts[0].isupper():  # Macro definition line
+                current_macro = parts[0]
+                mdt_lines[current_macro] = []
+            mdt_lines[current_macro].append(line.strip())
+
+        # Read Intermediate File (with macro calls)
+        for line in ir:
+            parts = line.split()
+            if len(parts) == 0:
+                continue
+            
+            # Check if it's a macro call (i.e., first part is a macro name)
+            if parts[0].upper() in mnt_dict:
+                macro_name = parts[0].upper()
+                macro_info = mnt_dict[macro_name]
+                pp = macro_info['pp']
+                kp = macro_info['kp']
+                mdtp = macro_info['mdtp']
+                kpdtp = macro_info['kpdtp']
+
+                # Get the parameters for the macro call
+                actual_args = parts[1:]  # Arguments passed with the macro call
+
+                # Map parameters from PNTAB (Parameter Name Table)
+                param_mapping = {}
+                param_names = pnt_dict[macro_name]
+                for i in range(pp):
+                    param_mapping[param_names[i]] = actual_args[i]  # Positional parameters
+                for i in range(kp):
+                    # Keyword parameters are of the form &param=value
+                    keyword_param = actual_args[pp + i]
+                    param_name, value = keyword_param.split("=")
+                    param_mapping[param_name] = value
+
+                # Now we need to substitute the parameters in the MDT
+                for mdt_line in mdt_lines[macro_name]:
+                    expanded_line = mdt_line
+                    for param, value in param_mapping.items():
+                        expanded_line = expanded_line.replace(f"&{param}", value)
+                    expanded.write(expanded_line + "\n")
+
+            else:
+                # If it's not a macro call, write the line as it is
+                expanded.write(line)
+
+        print("Macro Pass2 Processing done. :)")
+
+# Run Macro Pass2 to expand macros
+macro_pass2()
+
+PREREQUIRED FILE SAVE IN on file folder:
+
+1.mnt.txt-
+ADDITION        2  0  1  0
+MULTIPLICATION  2  1  2  1
+
+2.mdt.txt-
+ADDITION
+    LOAD &A
+    ADD &B
+    STORE RESULT
+
+MULTIPLICATION
+    LOAD &A
+    MUL &B
+    STORE &C
+
+3.kpdt.txt-
+&C   1
+
+4.intermediate.txt-
+MACRO ADDITION &A, &B
+    LOAD &A
+    ADD &B
+    STORE RESULT
+MEND
+
+MACRO MULTIPLICATION &A, &B, &C=1
+    LOAD &A
+    MUL &B
+    STORE &C
+MEND
+
+ADDITION 10 20
+MULTIPLICATION 5 4 &C=100
+ADDITION 30 40
+
+O/P:-
+expanded_code.txt file created in same folder-
+LOAD 10
+ADD 20
+STORE RESULT
+
+LOAD 5
+MUL 4
+STORE 100
+
+LOAD 30
+ADD 40
+STORE RESULT
+

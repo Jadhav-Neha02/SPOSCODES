@@ -1,0 +1,343 @@
+SPOS PASS 1
+CODE:
+class Mnemonic:
+    def __init__(self):
+        self.mname = ""
+        self.stmnt = ""
+        self.opcode = ""
+        self.length = ""
+
+class t_data:
+    def __init__(self):
+        self.sno = 0
+        self.value = ""
+        self.addr = 0
+
+def main():
+    tokens = []  # List to store the tokens
+    literal_table = []  # To store literal table
+    symbol_table = []  # To store symbol table
+    pool_table = []  # To store pool table
+    intermediate_code = []  # To store intermediate code
+
+    # Read source code
+    try:
+        with open("myfile/source_code.asm", "r") as file:
+            for line in file:
+                line = line.strip()  # Remove leading/trailing whitespaces
+                tokens.extend(line.split())  # Split by whitespace and add tokens to the list
+    except FileNotFoundError:
+        print("Source code file not found!")
+        return
+
+    print("Tokens from source code:")
+    print(tokens)  # Print tokens for debugging
+
+    # Read Mnemonic table
+    try:
+        with open("myfile/Mneumonics_table.txt", "r") as file:
+            mnemonics = []
+            for line in file:
+                parts = line.split()
+                if len(parts) == 4:
+                    mnemonic = Mnemonic()
+                    mnemonic.mname, mnemonic.stmnt, mnemonic.opcode, mnemonic.length = parts
+                    mnemonics.append(mnemonic)
+    except FileNotFoundError:
+        print("Mnemonic table file not found!")
+        return
+
+    # Initialize tables and variables
+    cntlit = 0  # Literal serial number
+    cntsym = 0  # Symbol serial number
+    lc = 0  # Location counter
+
+    check = 0  # For symbol checking
+    flag = 0  # For handling the start of code
+
+    # Process tokens
+    for i in range(len(tokens)):
+        token = tokens[i]
+        print(f"Processing token: {token}")  # Debugging print
+
+        if token == "START":
+            flag = 1
+            lc = int(tokens[i + 1])  # Location counter starts here
+            i += 1  # Skip address
+
+        elif "=" in token:  # Literal handling
+            temp = token[2:]  # Get the value after '='
+            if len(temp) < 1:
+                print(f"Skipping malformed token: {token}")
+                continue  # Skip this token if it's malformed
+
+            # Check if the literal is already in the literal table
+            found = False
+            for lit in literal_table:
+                if lit.value == temp:
+                    found = True
+                    break
+
+            if not found:
+                cntlit += 1
+                lit_data = t_data()
+                lit_data.sno = cntlit
+                lit_data.value = temp
+                lit_data.addr = lc
+                literal_table.append(lit_data)
+                intermediate_code.append(f"{lc} (L, {cntlit})")
+                lc += 1
+                pool_table.append(cntlit)  # Add to pool table when a literal is added
+                print(f"Literal added: {temp} at location {lc}")  # Debugging print
+
+        elif token in ["AREG", "BREG", "CREG", "DREG"]:  # Register handling
+            intermediate_code.append(f" {token}")
+
+        elif token in ["MOVER", "MOVEM", "ADD", "SUB", "MULT", "STOP", "BC"]:  # Mnemonic handling
+            for mnemonic in mnemonics:
+                if mnemonic.mname == token:
+                    intermediate_code.append(f"\n{lc} ({mnemonic.stmnt}, {mnemonic.opcode})")
+                    lc += int(mnemonic.length)
+                    print(f"Intermediate code: {lc} ({mnemonic.stmnt}, {mnemonic.opcode})")  # Debugging print
+                    break
+
+        elif token == "END":
+            intermediate_code.append(f"\n{lc} (AD,02)")
+
+            # Handle literals
+            for lit in literal_table:
+                if lit.addr == 0:
+                    lit.addr = lc
+                    intermediate_code.append(f"       {lit.value}")
+                    lc += 1
+            break
+
+        elif token == "ORIGIN":
+            intermediate_code.append(f"\n{lc} (AD,03) {tokens[i + 1]}")
+            next_token = tokens[i + 1]
+            symbol = next_token.split("+")[0]
+            offset = int(next_token.split("+")[1])
+
+            # Find the symbol address
+            symbol_addr = 0
+            for sym in symbol_table:
+                if sym.value == symbol:
+                    symbol_addr = sym.addr
+                    break
+
+            lc = symbol_addr + offset
+            i += 1
+
+        elif token == "EQU":
+            intermediate_code.append(f"\n{lc} (AD,04) {tokens[i + 1]}")
+            prev_token = tokens[i - 1]
+            next_token = tokens[i + 1]
+
+            address = 0
+            for sym in symbol_table:
+                if sym.value == next_token:
+                    address = sym.addr
+                    break
+
+            for sym in symbol_table:
+                if sym.value == prev_token:
+                    sym.addr = address
+                    break
+            i += 1
+
+        elif token == "LTORG":
+            intermediate_code.append(f"\n{lc} (AD,05) {tokens[i + 1]}")
+            for lit in literal_table:
+                if lit.addr == 0:
+                    lit.addr = lc
+                    intermediate_code.append(f"       {lit.value}")
+                    lc += 1
+            i += 1
+
+        elif token == "DS":
+            intermediate_code.append(f"\n{lc} (DL,02) {tokens[i + 1]}")
+            p = int(tokens[i + 1])
+            lc += p
+            i += 1
+
+        else:  # Variable handling
+            if check == 0:
+                sym_data = t_data()
+                cntsym += 1
+                sym_data.sno = cntsym
+                sym_data.value = token
+                if tokens[i + 1] == ":":
+                    sym_data.addr = lc
+                    i += 1
+                    symbol_table.append(sym_data)
+                else:
+                    symbol_table.append(sym_data)
+                    intermediate_code.append(f" , {token}")
+                check = 1
+
+            else:
+                found = False
+                for sym in symbol_table:
+                    if sym.value == token:
+                        if tokens[i + 1] == ":":
+                            sym.addr = lc
+                            i += 1
+                        elif tokens[i + 1] in ["DS", "EQU"]:
+                            if tokens[i + 1] == "DS":
+                                sym.addr = lc
+                            found = True
+                            break
+                        else:
+                            intermediate_code.append(f" , {token}")
+                        found = True
+                        break
+
+                if not found:
+                    sym_data = t_data()
+                    cntsym += 1
+                    sym_data.sno = cntsym
+                    sym_data.value = token
+                    if tokens[i + 1] == ":":
+                        sym_data.addr = lc
+                        i += 1
+                    else:
+                        intermediate_code.append(f" , {token}")
+                    symbol_table.append(sym_data)
+
+    # Write the tables and intermediate code to files
+    try:
+        with open("myfile/literal_table.txt", "w") as file:
+            for lit in literal_table:
+                file.write(f"{lit.sno} {lit.value} {lit.addr}\n")
+
+        with open("myfile/symbol_table.txt", "w") as file:
+            for sym in symbol_table:
+                file.write(f"{sym.sno} {sym.value} {sym.addr}\n")
+
+        with open("myfile/intermediate_code.txt", "w") as file:
+            for line in intermediate_code:
+                file.write(f"{line}\n")
+
+        with open("myfile/pool_table.txt", "w") as file:
+            for pool in pool_table:
+                file.write(f"{pool}\n")
+
+    except Exception as e:
+        print(f"Error writing to file: {e}")
+
+    print("Files have been written successfully.")
+
+if __name__ == "__main__":
+    main()
+
+File to be created:
+IN myfile FOLDER
+1.source_code.asm:
+START 200
+MOVER AREG,='5'
+MOVEM AREG,A
+LOOP : MOVER AREG,A
+MOVER CREG,B
+ADD CREG,='1'
+BC CREG,NEXT
+LTORG
+='5'
+='1'
+NEXT : SUB AREG,='1'
+BC AREG,BACK
+LAST : STOP
+ORIGIN LOOP+2
+MULT CREG,B
+ORIGIN LAST+1
+A  DS 1
+BACK  EQU LOOP
+B  DS 1
+END 
+='1'
+ 
+2.Mnemonic_table:
+MOVER   AD   01   1
+MOVEM   AD   02   1
+ADD     AD   03   1
+SUB     AD   04   1
+MULT    AD   05   1
+STOP    AD   06   1
+BC      BC   07   1
+MUL     AD   08   1
+DIV     AD   09   1
+ORIGIN  AD   10   1
+EQU     AD   11   1
+LTORG   AD   12   1 
+END     AD   13   1
+DS      DL   01   1
+DC      DL   02   1
+
+O/P:-
+Tokens from source code:
+['START', '200', 'MOVER', "AREG,='5'", 'MOVEM', 'AREG,A', 'LOOP', ':', 'MOVER', 'AREG,A', 'MOVER', 'CREG,B', 'ADD', "CREG,='1'", 'BC', 'CREG,NEXT', 'LTORG', "='5'", "='1'", 'NEXT', ':', 'SUB', "AREG,='1'", 'BC', 'AREG,BACK', 'LAST', ':', 'STOP', 'ORIGIN', 'LOOP+2', 'MULT', 'CREG,B', 'ORIGIN', 'LAST+1', 'A', 'DS', '1', 'BACK', 'EQU', 'LOOP', 'B', 'DS', '1', 'END', "='1'"]
+Processing token: START
+Processing token: 200
+Processing token: MOVER
+Intermediate code: 201 (AD, 01)
+Processing token: AREG,='5'
+Literal added: EG,='5' at location 202
+Processing token: MOVEM
+Intermediate code: 203 (AD, 02)
+Processing token: AREG,A
+Processing token: LOOP
+Processing token: :
+Processing token: MOVER
+Intermediate code: 204 (AD, 01)
+Processing token: AREG,A
+Processing token: MOVER
+Intermediate code: 205 (AD, 01)
+Processing token: CREG,B
+Processing token: ADD
+Intermediate code: 206 (AD, 03)
+Processing token: CREG,='1'
+Literal added: EG,='1' at location 207
+Processing token: BC
+Intermediate code: 208 (BC, 07)
+Processing token: CREG,NEXT
+Processing token: LTORG
+Processing token: ='5'
+Literal added: 5' at location 209
+Processing token: ='1'
+Literal added: 1' at location 210
+Processing token: NEXT
+Processing token: :
+Processing token: SUB
+Intermediate code: 211 (AD, 04)
+Processing token: AREG,='1'
+Processing token: BC
+Intermediate code: 212 (BC, 07)
+Processing token: AREG,BACK
+Processing token: LAST
+Processing token: :
+Processing token: STOP
+Intermediate code: 213 (AD, 06)
+Processing token: ORIGIN
+Processing token: LOOP+2
+Processing token: MULT
+Intermediate code: 206 (AD, 05)
+Processing token: CREG,B
+Processing token: ORIGIN
+Processing token: LAST+1
+Processing token: A
+Processing token: DS
+Processing token: 1
+Processing token: BACK
+Processing token: EQU
+Processing token: LOOP
+Processing token: B
+Processing token: DS
+Processing token: 1
+Processing token: END
+Files have been written successfully.
+>>> 
+
+In myfile folder 
+pool table
+literal table 
+intermediate table
+symbol table

@@ -1,0 +1,98 @@
+ASSIGNMENT 4 SPOS
+
+import threading
+import random
+import time
+
+class SharedBuffer:
+    def __init__(self, size):
+        self.buffer = [None] * size
+        self.count = 0
+        self.in_index = 0
+        self.out_index = 0
+        self.mutex = threading.Semaphore(1)  # Mutual exclusion for buffer access
+        self.empty = threading.Semaphore(size)  # Semaphore to track empty slots
+        self.full = threading.Semaphore(0)  # Semaphore to track filled slots
+
+    def produce(self, item):
+        self.empty.acquire()  # Wait if no empty slot
+        self.mutex.acquire()  # Acquire exclusive access to buffer
+
+        self.buffer[self.in_index] = item
+        self.in_index = (self.in_index + 1) % len(self.buffer)
+        self.count += 1
+        print(f"Produced: {item}")
+
+        self.mutex.release()  # Release exclusive access to buffer
+        self.full.release()  # Signal that there's one more filled slot
+
+    def consume(self):
+        self.full.acquire()  # Wait if no filled slot
+        self.mutex.acquire()  # Acquire exclusive access to buffer
+
+        item = self.buffer[self.out_index]
+        self.out_index = (self.out_index + 1) % len(self.buffer)
+        self.count -= 1
+        print(f"Consumed: {item}")
+
+        self.mutex.release()  # Release exclusive access to buffer
+        self.empty.release()  # Signal that there's one more empty slot
+
+class Producer(threading.Thread):
+    def __init__(self, buffer):
+        threading.Thread.__init__(self)
+        self.buffer = buffer
+
+    def run(self):
+        for i in range(10):
+            self.buffer.produce(i)
+            time.sleep(random.random() * 0.1)  # Random sleep to simulate production time
+
+class Consumer(threading.Thread):
+    def __init__(self, buffer):
+        threading.Thread.__init__(self)
+        self.buffer = buffer
+
+    def run(self):
+        for i in range(10):
+            self.buffer.consume()
+            time.sleep(random.random() * 0.1)  # Random sleep to simulate consumption time
+
+def main():
+    buffer = SharedBuffer(5)
+
+    producer = Producer(buffer)
+    consumer = Consumer(buffer)
+
+    producer.start()
+    consumer.start()
+
+    producer.join()
+    consumer.join()
+
+if __name__ == "__main__":
+    main()
+
+O/P:-
+
+Produced: 0
+Consumed: 0
+Produced: 1
+Consumed: 1
+Produced: 2
+Consumed: 2
+Produced: 3
+Produced: 4
+Consumed: 3
+Produced: 5
+Consumed: 4
+Produced: 6
+Consumed: 5
+Produced: 7
+Consumed: 6
+Produced: 8
+Consumed: 7
+Consumed: 8
+Produced: 9
+Consumed: 9
+>>> 

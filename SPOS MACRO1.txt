@@ -1,0 +1,146 @@
+SPOS MACRO 1:
+ 
+CODE:
+from collections import OrderedDict
+
+def macro_pass1():
+    with open("newfile/macro_input.asm", "r") as br, \
+         open("newfile/mnt.txt", "w") as mnt, \
+         open("newfile/mdt.txt", "w") as mdt, \
+         open("newfile/kpdt.txt", "w") as kpdt, \
+         open("newfile/pntab.txt", "w") as pnt, \
+         open("newfile/intermediate.txt", "w") as ir:
+
+        pntab = OrderedDict()
+        mdtp = 1
+        kpdtp = 0
+        paramNo = 1
+        pp = 0
+        kp = 0
+        flag = 0
+        macroname = None
+        macro_params = {}
+
+        for line in br:
+            parts = line.split()
+            if len(parts) == 0:
+                continue
+            
+            # When encountering MACRO definition
+            if parts[0].lower() == "macro":
+                flag = 1
+                line = br.readline()
+                parts = line.split()
+                macroname = parts[0]
+
+                # Reset macro-related variables
+                macro_params = {}  # This stores parameter names for the current macro
+                pp = 0
+                kp = 0
+
+                if len(parts) <= 1:  # No parameters
+                    mnt.write(f"{parts[0]}\t{pp}\t{kp}\t{mdtp}\t{kp if kp == 0 else kpdtp + 1}\n")
+                    continue
+                
+                for i in range(1, len(parts)):  # Processing parameters
+                    parts[i] = parts[i].replace(",", "").replace("&", "")
+                    if "=" in parts[i]:
+                        kp += 1
+                        keyword_param = parts[i].split("=")
+                        macro_params[keyword_param[0]] = paramNo
+                        paramNo += 1
+                        # Write keyword parameters to kpdt.txt
+                        if len(keyword_param) == 2:
+                            kpdt.write(f"{keyword_param[0]}\t{keyword_param[1]}\n")
+                        else:
+                            kpdt.write(f"{keyword_param[0]}\t-\n")
+                    else:
+                        macro_params[parts[i]] = paramNo
+                        paramNo += 1
+                        pp += 1
+
+                mnt.write(f"{parts[0]}\t{pp}\t{kp}\t{mdtp}\t{kp if kp == 0 else kpdtp + 1}\n")
+                kpdtp += kp
+
+            # When encountering MEND
+            elif parts[0].lower() == "mend":
+                mdt.write(f"{line}\n")
+                flag = kp = pp = 0
+                mdtp += 1
+                paramNo = 1
+                pnt.write(f"{macroname}:\t")
+                for param in macro_params.keys():
+                    pnt.write(f"{param}\t")
+                pnt.write("\n")
+                macro_params.clear()
+
+            # If flag is set, process macro body
+            elif flag == 1:
+                for part in parts:
+                    if "&" in part:
+                        part = part.replace(",", "").replace("&", "")
+                        # Check if part is in the macro_params dictionary
+                        if part in macro_params:
+                            mdt.write(f"(P,{macro_params[part]})\t")
+                        else:
+                            mdt.write(f"{part}\t")  # If not, just output the part as is
+                    else:
+                        mdt.write(f"{part}\t")
+                mdt.write("\n")
+                mdtp += 1
+
+            # Otherwise, it's part of the intermediate code
+            else:
+                ir.write(f"{line}\n")
+
+        print("Macro Pass1 Processing done. :)")
+
+# Run the macro pass 1 processing
+macro_pass1()
+
+PREREQUIRED FILE SAVE I FOLDER newfile:
+1.macro_input.asm
+MACRO ADDITION &A, &B
+    LOAD &A
+    ADD &B
+    STORE RESULT
+MEND
+
+MACRO MULTIPLICATION &A, &B, &C=1
+    LOAD &A
+    MUL &B
+    STORE &C
+MEND
+
+    ADDITION 10, 20
+    MULTIPLICATION 5, 4, 100
+    ADDITION 30, 40
+
+O/P:-
+1.pntab-
+LOAD:	A	
+LOAD:	A	
+
+2.mnt.txt-
+LOAD	1	0	1	0
+LOAD	1	0	4	0
+
+3.mdt.txt-
+ADD	B	
+STORE	RESULT	
+MEND
+
+MUL	B	
+STORE	C	
+MEND
+
+4.kpdt.txt-
+&C        1
+
+5.intermediate code-
+ADDITION 10, 20
+
+MULTIPLICATION 5, 4, 100
+
+ADDITION 30, 40
+

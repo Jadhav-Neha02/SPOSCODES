@@ -1,0 +1,37 @@
+#Page Replacement Algorithms
+def FIFO(processes,frame_size):
+    #this is where we do all our stuff
+    #initializing everything to be blank
+    tracker = [["-" for _ in range(frame_size)] for i in range(len(processes))]
+    replace = 0
+    page_fault = 0
+    for i in range(len(processes)):
+        process = processes[i]
+        #Copying previous alignment to make changes
+        if i>=1:
+            tracker[i] = list(tracker[i-1])
+        if process not in tracker[i]:
+            #We replace the the page which our replace variable points
+            #Since it's FIFO, we can just +1 % Frame size, to always know
+            #what to replace.
+            page_fault += 1 #adding a page fault
+            tracker[i][replace] = process
+            #setting so that next time fifo is followed
+            #1st element... 2nd element... nth element, then repeat
+            replace = (replace+1) % frame_size
+    
+    #that's it
+    print("First In First out")
+    print("Page Faults: ",page_fault)
+    for i in tracker:
+        print(i)
+
+
+
+import random
+if __name__ == "__main__":
+    reference = [7,0,1,2,0,3,0,4,2,3,0,3,1,2,0]
+    frame_size = 3
+    print("Reference: ",reference)
+    FIFO(reference,frame_size)
+    
